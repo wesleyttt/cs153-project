@@ -24,24 +24,18 @@ A Discord bot that translates spoken English to other languages in real-time. Th
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/discord-voice-translator.git
-cd discord-voice-translator
+git clone https://github.com/wesleyttt/cs153-project.git
+cd cs153-project
 ```
 
-2. Create a virtual environment:
+2. Create and activate Conda environment:
 
 ```bash
-python -m venv venv
-source venv/bin/activate
+conda env create -f local_env.yml
+conda activate discord_bot
 ```
 
-3. Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-4. Copy `example.env` to `.env` and fill in your credentials:
+3. Copy `example.env` to `.env` and fill in your credentials:
 
 ```plaintext
 DISCORD_TOKEN=your_discord_token
