@@ -1,155 +1,164 @@
-# CS 153 - Infrastructure at Scale AI Agent Starter Code
+# Discord Voice Translator Bot
 
-Note that for Discord the terms Bot and App are interchangable. We will use App in this manual.
+A Discord bot that translates spoken English to other languages in real-time. The bot listens to voice chat, transcribes the audio, translates it, and plays back the translation as speech.
 
-## Discord App Framework Code
+## Features
 
-This is the base framework for students to complete the CS 153 final project. Please follow the instructions to fork this repository into your own repository and make all of your additions there.
+- Real-time voice translation
+- Support for multiple languages
+- Text output of both original and translated speech
+- Easy-to-use commands
+- Configurable target language
 
-## Discord App Setup Instructions
+## Prerequisites
 
-Your group will be making your very own AI agent and import it into our CS153 server as a Discord App. This starter code provides the framework for a Discord App implemented in Python. Follow the instructions below.
+- Python 3.13 or higher
+- Discord Bot Token
+- ElevenLabs API Key (for speech features)
+- Mistral AI API Key (for translation)
+- FFmpeg installed on your system
+- Opus library (automatically handled for most systems)
 
-### Instructional Video
-We've put together a video going through the setup of this starter code, and explaining various pieces of it. We highly recommend giving it a watch!
+## Installation
 
-[![Image 1224x834 Small](https://github.com/user-attachments/assets/990c87bc-17f8-44a6-8c0b-c313a8a04693)](https://drive.google.com/file/d/1doJQYJjCHA0fuOQ8hP3mcmDRORq7E28v/view)
+1. Clone the repository:
 
-### Cursor Tutorial
-We've put together a short tutorial on how to use the Cursor IDE for building your projects. Run Cmd(ctrl)-I to open the composer if it doesn't show up for you!
-
-[![Frame 11](https://github.com/user-attachments/assets/2a4442ca-4170-40e2-b7b7-e163ae450801)](https://drive.google.com/file/d/1XFs17kZvEUx2xFLVistcdDuHnGFXU93a/view?usp=drive_link)
-
-
-### Join the Discord Server
-
-First, every member of the team should join the Discord server using the invite link on Ed.
-
-### Get your Role within the Server
-
-Role Options:
-
-`Student`: For enrolled students in the course.
-
-`Online-Student`: For students taking this course online.
-
-`Auditor`: For those auditing the course.
-
-`Collaborator`: For external collaborators or guests.
-
-How to Join Your Role:
-
-1. Send a Direct Message (DM) to the Admin Bot.
-2. Use the following command format: `.join <Role Name>`
-3. Replace `<Role Name>` with one of the options above (e.g., `.join Student`).
-
-How to Leave Your Role:
-
-1. Send a Direct Message (DM) to the Admin Bot.
-2. Use the following command format: `.leave <Role Name>`
-3. Replace `<Role Name>` with one of the options above (e.g., `.leave Student`).
-
-### Creating/Joining Your Group Channel
-
-How to create or join your group channel:
-
-1. Send a Direct Message (DM) to the Admin Bot.
-2. Pick a **unique** group name (**IMPORTANT**)
-3. Use the following command format:`.channel <Group Name>`
-4. Replace `<Group Name>` with the name of your project group (e.g., `.channel Group 1`).
-
-**What Happens When You Use the Command:**
-
-If the Channel Already Exists:
-
-- Check if you already have the role for this group. If you don’t have the role, it will assign you the role corresponding to `<Group Name>` granting you access to the channel.
-
-If the Channel Does Not Exist:
-
-- Create a new text channel named `<Group-Name>` in the Project Channels category.
-- Create a role named `<group name>` (the system will intentionally lower the case) and assign it to you.
-
-- Set permissions so that:
-  - Only members with the `<group name>` role can access the channel.
-  - The app and server admins have full access. All other server members are denied access.
-  - Once completed, you'll be able to access your group's private channel in the Project Channels category.
-
-## [One student per group] Setting up your bot
-
-##### Note: only ONE student per group should follow the rest of these steps.
-
-### Download files
-
-1. Fork and clone this GitHub repository.
-2. Share the repo with your teammates.
-3. Create a file called `.env` the same directory/folder as `bot.py`. The `.env` file should look like this, replacing the “your key here” with your key. In the below sections, we explain how to obtain Discord keys and Mistral API keys.
-
-```
-DISCORD_TOKEN=“your key here”
-MISTRAL_API_KEY=“your key here”
+```bash
+git clone https://github.com/yourusername/discord-voice-translator.git
+cd discord-voice-translator
 ```
 
-#### Making the bot
+2. Create a virtual environment:
 
-1. Go to https://discord.com/developers and click “New Application” in the top right corner.
-2. Pick a cool name for your new bot!
+```bash
+python -m venv venv
+source venv/bin/activate
+```
 
-##### It is very important that you name your app exactly following this scheme; some parts of the bot’s code rely on this format.
+3. Install dependencies:
 
-1. Next, you’ll want to click on the tab labeled “Bot” under “Settings.”
-2. Click “Copy” to copy the bot’s token. If you don’t see “Copy”, hit “Reset Token” and copy the token that appears (make sure you’re the first team member to go through these steps!)
-3. Open `.env` and paste the token between the quotes on the line labeled `DISCORD_TOKEN`.
-4. Scroll down to a region called “Privileged Gateway Intents”
-5. Tick the options for “Presence Intent”, “Server Members Intent”, and “Message Content Intent”, and save your changes.
-6. Click on the tab labeled “OAuth2” under “Settings”
-7. Locate the tab labeled “OAuth2 URL Generator” under “OAuth2”. Check the box labeled “bot”. Once you do that, another area with a bunch of options should appear lower down on the page.
-8. Check the following permissions, then copy the link that’s generated. <em>Note that these permissions are just a starting point for your bot. We think they’ll cover most cases, but you may run into cases where you want to be able to do more. If you do, you’re welcome to send updated links to the teaching team to re-invite your bot with new permissions.</em>
-  <img width="1097" alt="bot_permissions" src="https://github.com/user-attachments/assets/4db80209-e8d3-4e71-8cff-5f5e04beceeb" />
-9. Copy paste this link into the #app-invite-link channel on the CS 153 Discord server. Someone in the teaching team will invite your bot.
-10. After your bot appears in #welcome, find your bot's "application ID" on the Discord Developer panel.
+```bash
+pip install -r requirements.txt
+```
 
-![CleanShot 2025-01-21 at 23 42 53@2x](https://github.com/user-attachments/assets/2cf6b8fd-5756-494c-a6c3-8c61e821d568)
-    
-12. Send a DM to the admin bot: use the `.add-bot <application ID>` command to add the bot to your channel.
+4. Copy `example.env` to `.env` and fill in your credentials:
 
-#### Setting up the Mistral API key
+```plaintext
+DISCORD_TOKEN=your_discord_token
+ELEVENLABS_API_KEY=your_elevenlabs_key
+MISTRAL_API_KEY=your_mistral_key
+```
 
-1. Go to [Mistral AI Console](https://console.mistral.ai) and sign up for an account. During sign-up, you will be prompted to set up a workspace. Choose a name for your workspace and select "I'm a solo creator." If you already have an account, log in directly.
-2. After logging in, navigate to the "Workspace" section on the left-hand menu. Click on "Billing" and select “Experiment for free”.
-3. A pop-up window will appear. Click "Accept" to subscribe to the experiment plan and follow the instructions to verify your phone number. After verifying your phone number, you may need to click "Experiment for free" again to finish subscribing. 
-4. Once you have successfully subscribed to the experiment plan, go to the "API keys" page under the “API” section in the menu on the left.
-5. Click on "Create new key" to generate a new API key.
-6. After the key is generated, it will appear under “Your API keys” with the text: `“Your key is: <your-api-key>”`. Copy the API key and save it securely, as it will not be displayed again for security reasons.
-7. Open your `.env` file and paste the API key between the quotes on the line labeled `MISTRAL_API_KEY`.
 
-#### Setting up the starter code
+## Bot Commands
 
-We'll be using Python, if you've got a good Python setup already, great! But make sure that it is at least Python version 3.8. If not, the easiest thing to do is to make sure you have at least 3GB free on your computer and then to head over to [miniconda install](https://docs.anaconda.com/miniconda/install/) and install the Python 3 version of Anaconda. It will work on any operating system.
+- `!join` - Join your voice channel and start translating
+- `!leave` - Leave the voice channel
+- `!setlang [language]` - Set target language (e.g., "Spanish", "French")
+- `!languages` - List available languages
+- `!info` - Show bot information
+- `!ping` - Test if the bot is responsive
 
-After you have installed conda, close any open terminals you might have. Then open a terminal in the same folder as your `bot.py` file (If you haven’t used your terminal before, check out [this guide](https://www.macworld.com/article/2042378/master-the-command-line-navigating-files-and-folders.html)!). Once in, run the following command
+## Usage
 
-## 1. Create an environment with dependencies specified in env.yml:
-    conda env create -f local_env.yml
+1. Invite the bot to your Discord server
+2. Join a voice channel
+3. Use `!join` to bring the bot into your channel
+4. Start speaking in English
+5. The bot will:
+   - Transcribe your speech
+   - Show the original text in the chat
+   - Show the translation in the chat
+   - Play the translated audio in the voice channel
 
-## 2. Activate the new environment:
-    conda activate discord_bot
-    
-This will install the required dependencies to start the project.
+## Common Languages Supported
 
-## Guide To The Starter Code
+- Spanish
+- French
+- German
+- Italian
+- Portuguese
+- Russian
+- Japanese
+- Chinese
+- Korean
+- Arabic
+- Hindi
+- Dutch
+- Swedish
+- Greek
+- Turkish
 
-The starter code includes two files, `bot.py` and `agent.py`. Let's take a look at what this project already does.
-
-To do this, run `python3 bot.py` and leave it running in your terminal. Next, go into your team’s channel `Group-Name` and try typing any message. You should see the bot respond in the same channel. The default behavior of the bot is, that any time it sees a message (from a user), it sends that message to Mistral's API and sends back the response.
-
-Let's take a deeper look into how this is done. In the `bot.py` file, scroll to the `on_message` function. This function is called every time a message is sent in your channel. Observe how `agent.run()` is called on the message content, and how the result of that message call is sent back to the user.
-
-This agent is defined in the `agent.py` file. The `run()` function creates a simple LLM call with a system message defined at the top, and the user's message passed in. The response from the LLM is then returned.
-
-Check out this finalized [weather agent bot](https://github.com/CS-153/weather-agent-template/blob/main/agent.py) to see a more detailed example.
+Additional languages may be supported through Mistral AI's translation capabilities.
 
 ## Troubleshooting
 
-### `Exception: .env not found`!
+If voice features aren't working:
+- Ensure FFmpeg is installed on your system
+- Check that the Opus library is properly loaded
+- Verify your ElevenLabs API key is valid
+- Make sure the bot has proper permissions in your Discord server
 
-If you’re seeing this error, it probably means that your terminal is not open in the right folder. Make sure that it is open inside the folder that contains `bot.py` and `.env`
+For Opus-related issues:
+- On macOS: Install Opus using Homebrew: `brew install opus`
+- On Linux: Install using package manager: `sudo apt-get install libopus0`
+- On Windows: The bot should handle Opus automatically
+
+## Environment Variables
+
+- `DISCORD_TOKEN` - Your Discord bot token
+- `MISTRAL_API_KEY` - Mistral AI API key for translations
+- `ELEVENLABS_API_KEY` - ElevenLabs API key for speech features
+- `ELEVENLABS_VOICE_ID` - (Optional) Custom voice ID for text-to-speech
+
+## Discord Bot Permissions
+
+The bot requires the following permissions:
+- View Channels
+- Send Messages
+- Connect to Voice Channel
+- Speak in Voice Channel
+- Use Voice Activity
+
+You can generate an invite link with these permissions from the Discord Developer Portal.
+
+## Development
+
+To run the bot in development mode:
+
+1. Ensure all prerequisites are installed
+2. Activate your virtual environment
+3. Run the bot:
+
+```bash
+python main.py
+```
+
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes:
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+
+## Acknowledgments
+
+- Discord.py for the Discord API wrapper
+- Mistral AI for translation services
+- ElevenLabs for speech-to-text and text-to-speech capabilities
+
+## Support
+
+If you encounter any issues or have questions:
+1. Check the Troubleshooting section above
+2. Look through existing GitHub Issues
+3. Create a new Issue with detailed information about your problem
+
+## Security
+
+Please do not commit any API keys or sensitive information. Always use environment variables or secure configuration files for sensitive data.
