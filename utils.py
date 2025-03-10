@@ -7,7 +7,7 @@ def load_opus():
     """Load Opus library for voice support"""
     if not discord.opus.is_loaded():
         try:
-            # For Apple Silicon Mac - using the path you found
+            # For Apple Silicon Mac
             opus_path = "/opt/homebrew/lib/libopus.0.dylib"
             
             try:

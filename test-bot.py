@@ -523,7 +523,7 @@ async def on_ready():
     print(f'Bot is ready! Logged in as {bot.user}')
     print(f'Bot ID: {bot.user.id}')
     print(f'Opus loaded: {discord.opus.is_loaded()}')
-    print(f'Use !join in a Discord server to start translating')
+    print('Use !join in a Discord server to start translating')
 
 # Add a simple debug command
 @bot.command()
@@ -534,7 +534,7 @@ async def ping(ctx):
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
-        await ctx.send(f"Command not found. Try `!info` for available commands.")
+        await ctx.send("Command not found. Try `!info` for available commands.")
     else:
         print(f"Command error: {error}")
         await ctx.send(f"Error: {error}")
