@@ -18,8 +18,12 @@ def load_secrets_from_file(filename="secrets.txt"):
             for line in file:
                 line = line.strip()
                 if line and '=' in line:
+                    # Handle line numbers if present (like in your file)
+                    if '|' in line:
+                        line = line.split('|', 1)[1]
+                    
                     key, value = line.split('=', 1)
-                    secrets[key] = value
+                    secrets[key.strip()] = value.strip()
         logger.info(f"Loaded secrets from {filename}")
         return secrets
     except Exception as e:
