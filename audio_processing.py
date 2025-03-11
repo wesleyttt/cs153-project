@@ -6,7 +6,7 @@ import os
 import logging
 import discord
 from discord.sinks import Sink
-from api_services import transcribe_audio, translate_text, generate_speech
+from api_services import transcribe_audio, translate_text, generate_speech, get_elevenlabs_voices, select_voice_for_language
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,9 @@ def process_user_audio(user_id, audio_queue, text_channel, voice_client, target_
     silence_threshold = 0.5  # seconds of silence to consider end of speech
     last_audio_time = None
     
+    # Cache available voices
+    all_voices = get_elevenlabs_voices()
+    
     while True:
         try:
             # Wait for audio data with timeout
@@ -94,9 +97,13 @@ def process_user_audio(user_id, audio_queue, text_channel, voice_client, target_
                             bot.loop if bot else asyncio.get_event_loop()
                         )
                         
-                        # Step 4: Generate and play speech
+                        # Step 4: Select appropriate voice for the target language
+                        voice_id = select_voice_for_language(target_lang, all_voices)
+                        logger.info(f"Selected voice ID {voice_id} for language {target_lang}")
+                        
+                        # Step 5: Generate and play speech with selected voice
                         logger.info("Generating speech...")
-                        audio_file_path = generate_speech(translation)
+                        audio_file_path = generate_speech(translation, voice_id)
                         if audio_file_path and voice_client and voice_client.is_connected():
                             logger.info(f"Playing audio from {audio_file_path}")
                             asyncio.run_coroutine_threadsafe(

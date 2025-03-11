@@ -105,7 +105,73 @@ def translate_text(text, source_lang="English", target_lang="Spanish"):
         logger.error(f"Error in translation: {e}")
         return text
 
-def generate_speech(text, voice_id=ELEVENLABS_VOICE_ID):
+def get_elevenlabs_voices():
+    """Fetch all available voices from ElevenLabs API"""
+    api_key = ELEVENLABS_API_KEY
+    if not api_key:
+        logger.error("ELEVENLABS_API_KEY is missing")
+        return []
+    
+    headers = {
+        "xi-api-key": api_key
+    }
+    
+    try:
+        response = requests.get("https://api.elevenlabs.io/v1/voices", headers=headers)
+        response.raise_for_status()
+        voices = response.json().get("voices", [])
+        return voices
+    except Exception as e:
+        logger.error(f"Error fetching ElevenLabs voices: {e}")
+        return []
+
+def select_voice_for_language(target_lang, voices=None):
+    """Select appropriate voice for target language"""
+    if voices is None:
+        voices = get_elevenlabs_voices()
+    
+    logger.info(f"Selecting voice for language {target_lang}. Found {len(voices)} voices.")
+    
+    # Define preferred voices for common languages
+    language_voice_map = {
+        "Spanish": ["Antonio", "Mia", "Pedro"],
+        "French": ["Nicole", "Rémi", "Alain"],
+        "German": ["Hans", "Greta", "Stefan"],
+        "Italian": ["Valentina", "Matteo", "Gianni"],
+        "Portuguese": ["Thiago", "Luiza"],
+        "Japanese": ["Hiroto", "Yuka"],
+        "Chinese": ["Li", "Wang"],
+        "Russian": ["Alexei", "Natasha"],
+        # Add more language-voice mappings as needed
+    }
+    
+    # Default to English voice if no match
+    default_voices = ["Adam", "Bella", "Josh"]
+    
+    # Get preferred voices for target language
+    preferred_voices = language_voice_map.get(target_lang, default_voices)
+    logger.info(f"Preferred voices for {target_lang}: {preferred_voices}")
+    
+    # Find first available preferred voice
+    for preferred_name in preferred_voices:
+        for voice in voices:
+            voice_name = voice.get("name", "")
+            if preferred_name.lower() in voice_name.lower():
+                voice_id = voice.get("voice_id")
+                logger.info(f"Found matching voice: {voice_name} (ID: {voice_id})")
+                return voice_id
+    
+    # If no preferred voice found, return first available voice
+    if voices:
+        first_voice_id = voices[0].get("voice_id")
+        first_voice_name = voices[0].get("name", "")
+        logger.info(f"No preferred voice found, using first available: {first_voice_name} (ID: {first_voice_id})")
+        return first_voice_id
+    
+    logger.warning("No voices available, falling back to default voice ID")
+    return ELEVENLABS_VOICE_ID  # Return the default voice ID
+
+def generate_speech(text, voice_id=None):
     """Generate speech from text using ElevenLabs API"""
     try:
         headers = {
@@ -122,8 +188,15 @@ def generate_speech(text, voice_id=ELEVENLABS_VOICE_ID):
             }
         }
         
+        # Use provided voice_id, fall back to default ELEVENLABS_VOICE_ID
+        voice_id_to_use = voice_id if voice_id else ELEVENLABS_VOICE_ID
+        
+        if not voice_id_to_use:
+            logger.error("No voice ID provided and no default voice ID configured")
+            return None
+            
         response = requests.post(
-            f"{ELEVENLABS_TTS_URL}/{voice_id}",
+            f"{ELEVENLABS_TTS_URL}/{voice_id_to_use}",
             headers=headers,
             json=payload
         )
