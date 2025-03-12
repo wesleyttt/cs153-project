@@ -6,7 +6,7 @@ import os
 import logging
 import discord
 from discord.sinks import Sink
-from api_services import transcribe_audio, translate_text, generate_speech, get_elevenlabs_voices, get_user_voice
+from api_services import transcribe_audio, translate_text, generate_speech, get_elevenlabs_voices, get_user_voice, get_user_input_language, get_user_output_language
 
 logger = logging.getLogger(__name__)
 
@@ -52,17 +52,16 @@ def process_user_audio(user_id, audio_queue, text_channel, voice_client, target_
     """Process audio from a user in a separate thread"""
     logger.info(f"Started processing audio for user {user_id}")
     accumulated_audio = bytearray()
-    silence_threshold = 0.5  # seconds of silence to consider end of speech
+    silence_threshold = 0.3  # seconds of silence to consider end of speech
     last_audio_time = None
     
-    # Cache available voices
-    all_voices = get_elevenlabs_voices()
+    # Get user's input language preference
+    source_lang = get_user_input_language(user_id, default="English")
+    logger.info(f"Using input language for user {user_id}: {source_lang}")
     
-    # Get user's input language preference if available
-    source_lang = "English"  # Default
-    if bot and hasattr(bot, 'user_input_languages') and user_id in bot.user_input_languages:
-        source_lang = bot.user_input_languages[user_id]
-        logger.info(f"Using custom input language for user {user_id}: {source_lang}")
+    # Get user's output language preference (fallback to bot's target language)
+    output_lang = get_user_output_language(user_id, default=target_lang)
+    logger.info(f"Using output language for user {user_id}: {output_lang}")
     
     while True:
         try:
@@ -88,30 +87,26 @@ def process_user_audio(user_id, audio_queue, text_channel, voice_client, target_
                     logger.info(f"Transcription result: '{transcription}'")
                     
                     if transcription:
-                        # Step 2: Translate the text
-                        logger.info(f"Translating text from {source_lang} to {target_lang}...")
+                        # Step 2: Translate the text - use user's personal language preferences
+                        logger.info(f"Translating text from {source_lang} to {output_lang}...")
                         translation = translate_text(
                             transcription, 
                             source_lang=source_lang, 
-                            target_lang=target_lang
+                            target_lang=output_lang
                         )
                         logger.info(f"Translation result: '{translation}'")
                         
                         # Step 3: Send text to Discord
                         asyncio.run_coroutine_threadsafe(
-                            text_channel.send(f'**User {user_id}** ({source_lang}): {transcription}\n**Translated** ({target_lang}): {translation}'),
+                            text_channel.send(f'**User {user_id}** ({source_lang}): {transcription}\n**Translated** ({output_lang}): {translation}'),
                             bot.loop if bot else asyncio.get_event_loop()
                         )
                         
-                        # Step 4: Get user-specific voice
-                        logger.info(f"Getting voice for user {user_id}...")
-                        
-                        # Step 5: Generate and play speech with user's voice
+                        # Step 4-6: Generate and play speech with user's voice
                         logger.info("Generating speech...")
                         audio_file_path = generate_speech(translation, user_id=user_id)
                         
                         if audio_file_path:
-                            # Step 6: Play the audio
                             logger.info(f"Playing audio file: {audio_file_path}")
                             asyncio.run_coroutine_threadsafe(
                                 play_audio(voice_client, audio_file_path),

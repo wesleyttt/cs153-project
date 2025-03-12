@@ -46,14 +46,19 @@ MISTRAL_API_KEY=your_mistral_key
 
 ## Bot Commands
 
+- `!help` - Show a list of available commands
 - `!join` - Join your voice channel and start translating
 - `!leave` - Leave the voice channel
-- `!setlang [language]` - Set target language (e.g., "Spanish", "French")
+- `!output [language]` - Set your target language (e.g., "Spanish", "French")
 - `!input [language]` - Set your source language (e.g., "English", "Spanish")
+- `!setvoice [voice_id]` - Set your voice (voice_id is an int between 1 and 20)
 - `!myconfig` - View your current language settings
 - `!languages` - List available languages
 - `!info` - Show bot information
 - `!ping` - Test if the bot is responsive
+
+Deprecated commands:
+- `!setlang [language]` - Set target language (e.g., "Spanish", "French")
 
 ## Usage
 

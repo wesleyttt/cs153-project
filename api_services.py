@@ -15,7 +15,39 @@ import random
 
 logger = logging.getLogger(__name__)
 
-def transcribe_audio(audio_data):
+# Language code mapping
+LANGUAGE_CODES = {
+    "english": "en",
+    "spanish": "es", 
+    "french": "fr",
+    "german": "de",
+    "italian": "it",
+    "portuguese": "pt",
+    "polish": "pl",
+    "chinese": "zh",
+    "japanese": "ja",
+    "korean": "ko",
+    "hindi": "hi",
+    "arabic": "ar",
+    "russian": "ru",
+    "dutch": "nl",
+    "turkish": "tr",
+    "indonesian": "id",
+    "czech": "cs",
+    "danish": "da",
+    "finnish": "fi",
+    "greek": "el",
+    "hebrew": "he",
+    "hungarian": "hu",
+    "norwegian": "no",
+    "romanian": "ro",
+    "swedish": "sv",
+    "thai": "th",
+    "vietnamese": "vi",
+    "ukrainian": "uk"
+}
+
+def transcribe_audio(audio_data, user_id=None):
     """Convert audio to text using ElevenLabs API"""
     if not audio_data or len(audio_data) < 1000:
         logger.warning(f"Audio data too small to process: {len(audio_data) if audio_data else 0} bytes")
@@ -67,10 +99,21 @@ def transcribe_audio(audio_data):
                 os.unlink(temp_file_path)
             return ""
         
+        # Get user input language and convert to language code if user_id is provided
+        language_code = None
+        if user_id:
+            input_language = get_user_input_language(user_id)
+            language_code = get_language_code(input_language)
+            logger.info(f"Using language code '{language_code}' for transcription in '{input_language}'")
+        
         # ElevenLabs requires multipart/form-data with 'file' field and 'model_id'
         with open(temp_file_path, "rb") as audio_file:
             files = {"file": audio_file}
             data = {"model_id": "scribe_v1"}
+            
+            # Add language code if available
+            if language_code:
+                data["language"] = language_code
             
             response = requests.post(
                 ELEVENLABS_STT_URL,
@@ -175,6 +218,12 @@ def get_elevenlabs_voices():
         logger.error("Error loading voices.json")
         return []
 
+def get_language_code(language, default="en"):
+    """Get the ISO language code for a language name"""
+    if not language:
+        return default
+    return LANGUAGE_CODES.get(language.lower(), default)
+
 def generate_speech(text, voice_id=None, user_id=None):
     """Generate speech from text using ElevenLabs API"""
     if not text or not text.strip():
@@ -192,28 +241,41 @@ def generate_speech(text, voice_id=None, user_id=None):
             "Content-Type": "application/json"
         }
         
+        # Get user output language and convert to language code
+        output_language = get_user_output_language(user_id)
+        language_code = get_language_code(output_language)
+        logger.info(f"Using language code '{language_code}' for language '{output_language}'")
+        
+        # Log text being converted (truncate if too long)
+        display_text = text if len(text) < 100 else f"{text[:97]}..."
+        logger.info(f"Converting text to speech: '{display_text}'")
+        
         payload = {
             "text": text,
             "model_id": "eleven_flash_v2_5",
             "voice_settings": {
                 "stability": 0.75,
                 "similarity_boost": 0.5
-            }
+            },
+            "language_code": language_code
         }
         
         # First check for user-specific voice if user_id is provided
         voice_id_to_use = None
         if user_id:
             voice_id_to_use = get_user_voice(user_id)
+            logger.info(f"Using user-specific voice ID for user {user_id}: {voice_id_to_use}")
         
         # Fall back to provided voice_id if user doesn't have an assigned voice
         if not voice_id_to_use:
             voice_id_to_use = voice_id if voice_id else ELEVENLABS_VOICE_ID
+            logger.info(f"Falling back to voice ID: {voice_id_to_use}")
         
         if not voice_id_to_use:
             logger.error("No voice ID determined and no default voice ID configured")
             return None
             
+        logger.info(f"Sending TTS request to ElevenLabs API with voice ID: {voice_id_to_use}")
         response = requests.post(
             f"{ELEVENLABS_TTS_URL}/{voice_id_to_use}",
             headers=headers,
@@ -225,10 +287,18 @@ def generate_speech(text, voice_id=None, user_id=None):
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
                 temp_file.write(response.content)
                 temp_file_path = temp_file.name
+                
+            # Log successful audio generation with details
+            file_size = os.path.getsize(temp_file_path)
+            logger.info(f"Successfully generated audio file: {temp_file_path} ({file_size} bytes)")
             
             return temp_file_path
         else:
             logger.error(f"TTS error: {response.status_code} - {response.text}")
+            try:
+                logger.error(f"Full error response: {response.json()}")
+            except:
+                logger.error("Could not parse error response as JSON")
             return None
             
     except Exception as e:
@@ -283,4 +353,73 @@ def assign_voice_to_user(user_id, voice_id):
     assignments[str(user_id)] = voice_id
     save_voice_assignments(assignments)
     logger.info(f"Manually assigned voice {voice_id} to user {user_id}")
+    return True
+
+def load_user_languages():
+    """Load user language preferences from user_languages.json"""
+    try:
+        with open("user_languages.json", "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        logger.info("No existing language preferences found or invalid JSON. Creating new preferences file.")
+        return {}
+
+def save_user_languages(language_prefs):
+    """Save user language preferences to user_languages.json"""
+    with open("user_languages.json", "w") as f:
+        json.dump(language_prefs, f, indent=2)
+    logger.info(f"Saved language preferences for {len(language_prefs)} users")
+
+def get_user_input_language(user_id, default="English"):
+    """Get a user's input language preference, or return default if none exists"""
+    preferences = load_user_languages()
+    user_id_str = str(user_id)
+    
+    if user_id_str in preferences and "input" in preferences[user_id_str]:
+        language = preferences[user_id_str]["input"]
+        logger.info(f"Found existing input language for user {user_id}: {language}")
+        return language
+        
+    # If no preference exists, return default
+    logger.info(f"No input language preference for user {user_id}, using default: {default}")
+    return default
+    
+def get_user_output_language(user_id, default="Spanish"):
+    """Get a user's output language preference, or return default if none exists"""
+    preferences = load_user_languages()
+    user_id_str = str(user_id)
+    
+    if user_id_str in preferences and "output" in preferences[user_id_str]:
+        language = preferences[user_id_str]["output"]
+        logger.info(f"Found existing output language for user {user_id}: {language}")
+        return language
+        
+    # If no preference exists, return default
+    logger.info(f"No output language preference for user {user_id}, using default: {default}")
+    return default
+
+def set_user_input_language(user_id, language):
+    """Set a user's input language preference"""
+    preferences = load_user_languages()
+    user_id_str = str(user_id)
+    
+    if user_id_str not in preferences:
+        preferences[user_id_str] = {}
+    
+    preferences[user_id_str]["input"] = language
+    save_user_languages(preferences)
+    logger.info(f"Set input language for user {user_id} to {language}")
+    return True
+
+def set_user_output_language(user_id, language):
+    """Set a user's output language preference"""
+    preferences = load_user_languages()
+    user_id_str = str(user_id)
+    
+    if user_id_str not in preferences:
+        preferences[user_id_str] = {}
+    
+    preferences[user_id_str]["output"] = language
+    save_user_languages(preferences)
+    logger.info(f"Set output language for user {user_id} to {language}")
     return True 
