@@ -2,6 +2,7 @@ import requests
 import tempfile
 import os
 import io
+import re
 from pydub import AudioSegment
 import logging
 from config import (
@@ -14,23 +15,40 @@ logger = logging.getLogger(__name__)
 
 def transcribe_audio(audio_data):
     """Convert audio to text using ElevenLabs API"""
-    # Convert audio data to proper format
-    audio = AudioSegment.from_raw(
-        io.BytesIO(audio_data),
-        sample_width=2,
-        frame_rate=48000,
-        channels=2
-    )
+    if not audio_data or len(audio_data) < 1000:
+        logger.warning(f"Audio data too small to process: {len(audio_data) if audio_data else 0} bytes")
+        return ""
+        
+    logger.info(f"Processing audio data of size: {len(audio_data)} bytes")
     
-    # Convert to mono and set appropriate sample rate
-    audio = audio.set_channels(1)
-    audio = audio.set_frame_rate(16000)
+    # Convert audio data to proper format
+    try:
+        audio = AudioSegment.from_raw(
+            io.BytesIO(audio_data),
+            sample_width=2,
+            frame_rate=48000,
+            channels=2
+        )
+        
+        # Convert to mono and set appropriate sample rate
+        audio = audio.set_channels(1)
+        audio = audio.set_frame_rate(16000)
+        
+        logger.info(f"Converted audio: {len(audio.raw_data)} bytes, {audio.frame_rate}Hz, {audio.channels} channel(s)")
+    except Exception as e:
+        logger.error(f"Error converting audio format: {e}")
+        return ""
     
     # Save to temporary file
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
-        audio.export(temp_file.name, format="mp3")
-        temp_file_path = temp_file.name
-        logger.info(f"Saved audio to temporary file: {temp_file_path}")
+    temp_file_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
+            audio.export(temp_file.name, format="mp3")
+            temp_file_path = temp_file.name
+            logger.info(f"Saved audio to temporary file: {temp_file_path}, size: {os.path.getsize(temp_file_path)} bytes")
+    except Exception as e:
+        logger.error(f"Error saving audio to temp file: {e}")
+        return ""
     
     try:
         # Call ElevenLabs API with the required fields
@@ -39,6 +57,13 @@ def transcribe_audio(audio_data):
         }
         
         logger.info("Sending request to ElevenLabs STT API...")
+        
+        # Verify the API key is not empty
+        if not ELEVENLABS_API_KEY:
+            logger.error("ELEVENLABS_API_KEY is missing or empty")
+            if os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+            return ""
         
         # ElevenLabs requires multipart/form-data with 'file' field and 'model_id'
         with open(temp_file_path, "rb") as audio_file:
@@ -53,19 +78,36 @@ def transcribe_audio(audio_data):
             )
         
         # Clean up temp file
-        os.unlink(temp_file_path)
+        if os.path.exists(temp_file_path):
+            os.unlink(temp_file_path)
+            logger.info(f"Deleted temporary file: {temp_file_path}")
         
         if response.status_code == 200:
             result = response.json().get("text", "")
             logger.info(f"Transcription successful: '{result}'")
+            
+            # Filter out text within parentheses (sound effects, background noises)
+            filtered_result = re.sub(r'\([^)]*\)', '', result).strip()
+            if filtered_result != result:
+                logger.info(f"Filtered transcription: '{filtered_result}'")
+                # Only return filtered result if it contains actual content
+                if filtered_result:
+                    return filtered_result
+                # If filtering removed all content, return empty string
+                return ""
             return result
         else:
             logger.error(f"Transcription error: {response.status_code} - {response.text}")
+            # Add full response dump for debugging
+            try:
+                logger.error(f"Full response: {response.json()}")
+            except:
+                logger.error(f"Could not parse response as JSON")
             return ""
             
     except Exception as e:
         logger.error(f"Error in transcription: {e}")
-        if os.path.exists(temp_file_path):
+        if temp_file_path and os.path.exists(temp_file_path):
             os.unlink(temp_file_path)
         return ""
 
@@ -183,7 +225,7 @@ def generate_speech(text, voice_id=None):
             "text": text,
             "model_id": "eleven_flash_v2_5",
             "voice_settings": {
-                "stability": 0.5,
+                "stability": 0.75,
                 "similarity_boost": 0.5
             }
         }
