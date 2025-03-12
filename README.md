@@ -49,6 +49,8 @@ MISTRAL_API_KEY=your_mistral_key
 - `!join` - Join your voice channel and start translating
 - `!leave` - Leave the voice channel
 - `!setlang [language]` - Set target language (e.g., "Spanish", "French")
+- `!input [language]` - Set your source language (e.g., "English", "Spanish")
+- `!myconfig` - View your current language settings
 - `!languages` - List available languages
 - `!info` - Show bot information
 - `!ping` - Test if the bot is responsive
@@ -58,8 +60,9 @@ MISTRAL_API_KEY=your_mistral_key
 1. Invite the bot to your Discord server
 2. Join a voice channel
 3. Use `!join` to bring the bot into your channel
-4. Start speaking in English
-5. The bot will:
+4. (Optional) Use `!input [language]` to set your input language
+5. Start speaking in your chosen language
+6. The bot will:
    - Transcribe your speech
    - Show the original text in the chat
    - Show the translation in the chat

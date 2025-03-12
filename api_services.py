@@ -2,6 +2,7 @@ import requests
 import tempfile
 import os
 import io
+import re
 from pydub import AudioSegment
 import logging
 from config import (
@@ -9,28 +10,47 @@ from config import (
     ELEVENLABS_TTS_URL, ELEVENLABS_STT_URL, 
     MISTRAL_API_URL, ELEVENLABS_VOICE_ID
 )
+import json
+import random
 
 logger = logging.getLogger(__name__)
 
 def transcribe_audio(audio_data):
     """Convert audio to text using ElevenLabs API"""
-    # Convert audio data to proper format
-    audio = AudioSegment.from_raw(
-        io.BytesIO(audio_data),
-        sample_width=2,
-        frame_rate=48000,
-        channels=2
-    )
+    if not audio_data or len(audio_data) < 1000:
+        logger.warning(f"Audio data too small to process: {len(audio_data) if audio_data else 0} bytes")
+        return ""
+        
+    logger.info(f"Processing audio data of size: {len(audio_data)} bytes")
     
-    # Convert to mono and set appropriate sample rate
-    audio = audio.set_channels(1)
-    audio = audio.set_frame_rate(16000)
+    # Convert audio data to proper format
+    try:
+        audio = AudioSegment.from_raw(
+            io.BytesIO(audio_data),
+            sample_width=2,
+            frame_rate=48000,
+            channels=2
+        )
+        
+        # Convert to mono and set appropriate sample rate
+        audio = audio.set_channels(1)
+        audio = audio.set_frame_rate(16000)
+        
+        logger.info(f"Converted audio: {len(audio.raw_data)} bytes, {audio.frame_rate}Hz, {audio.channels} channel(s)")
+    except Exception as e:
+        logger.error(f"Error converting audio format: {e}")
+        return ""
     
     # Save to temporary file
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
-        audio.export(temp_file.name, format="mp3")
-        temp_file_path = temp_file.name
-        logger.info(f"Saved audio to temporary file: {temp_file_path}")
+    temp_file_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
+            audio.export(temp_file.name, format="mp3")
+            temp_file_path = temp_file.name
+            logger.info(f"Saved audio to temporary file: {temp_file_path}, size: {os.path.getsize(temp_file_path)} bytes")
+    except Exception as e:
+        logger.error(f"Error saving audio to temp file: {e}")
+        return ""
     
     try:
         # Call ElevenLabs API with the required fields
@@ -39,6 +59,13 @@ def transcribe_audio(audio_data):
         }
         
         logger.info("Sending request to ElevenLabs STT API...")
+        
+        # Verify the API key is not empty
+        if not ELEVENLABS_API_KEY:
+            logger.error("ELEVENLABS_API_KEY is missing or empty")
+            if os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+            return ""
         
         # ElevenLabs requires multipart/form-data with 'file' field and 'model_id'
         with open(temp_file_path, "rb") as audio_file:
@@ -53,19 +80,36 @@ def transcribe_audio(audio_data):
             )
         
         # Clean up temp file
-        os.unlink(temp_file_path)
+        if os.path.exists(temp_file_path):
+            os.unlink(temp_file_path)
+            logger.info(f"Deleted temporary file: {temp_file_path}")
         
         if response.status_code == 200:
             result = response.json().get("text", "")
             logger.info(f"Transcription successful: '{result}'")
+            
+            # Filter out text within parentheses (sound effects, background noises)
+            filtered_result = re.sub(r'\([^)]*\)', '', result).strip()
+            if filtered_result != result:
+                logger.info(f"Filtered transcription: '{filtered_result}'")
+                # Only return filtered result if it contains actual content
+                if filtered_result:
+                    return filtered_result
+                # If filtering removed all content, return empty string
+                return ""
             return result
         else:
             logger.error(f"Transcription error: {response.status_code} - {response.text}")
+            # Add full response dump for debugging
+            try:
+                logger.error(f"Full response: {response.json()}")
+            except:
+                logger.error("Could not parse response as JSON")
             return ""
             
     except Exception as e:
         logger.error(f"Error in transcription: {e}")
-        if os.path.exists(temp_file_path):
+        if temp_file_path and os.path.exists(temp_file_path):
             os.unlink(temp_file_path)
         return ""
 
@@ -83,8 +127,25 @@ def translate_text(text, source_lang="English", target_lang="Spanish"):
         "model": "mistral-small-latest",
         "messages": [
             {
-                "role": "system", 
-                "content": f"You are a translator. Translate the following text from {source_lang} to {target_lang}. Only respond with the translated text, nothing else."
+                "role": "system",
+                "content": f"""You are a translator. Translate the following text from {source_lang} to {target_lang}. Only respond with the translated text, nothing else. If the input is a question, do not respond to the question, only respond with the translated question.
+
+                Example: source_lang = English, target_lang = Spanish
+                Input: What is the capital of France?
+                Output: ¿Cuál es la capital de Francia?
+
+                Example: source_lang = Chinese, target_lang = English  
+                Input: 你現在在講什麼語言？
+                Output: What language are you speaking now?
+
+                Example: source_lang = Spanish, target_lang = French
+                Input: El clima es agradable hoy.
+                Output: Il fait beau aujourd'hui.
+
+                ----
+                Current translation:
+                From {source_lang} to {target_lang}
+                Input: """
             },
             {
                 "role": "user",
@@ -105,9 +166,27 @@ def translate_text(text, source_lang="English", target_lang="Spanish"):
         logger.error(f"Error in translation: {e}")
         return text
 
-def generate_speech(text, voice_id=ELEVENLABS_VOICE_ID):
-    """Generate speech from text using ElevenLabs API"""
+def get_elevenlabs_voices():
+    """Fetch all available voices from voices.json"""
     try:
+        with open("voices.json", "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        logger.error("Error loading voices.json")
+        return []
+
+def generate_speech(text, voice_id=None, user_id=None):
+    """Generate speech from text using ElevenLabs API"""
+    if not text or not text.strip():
+        logger.warning("Empty text provided to speech generation")
+        return None
+        
+    try:
+        # Verify API key first
+        if not ELEVENLABS_API_KEY:
+            logger.error("ELEVENLABS_API_KEY is missing or empty")
+            return None
+            
         headers = {
             "xi-api-key": ELEVENLABS_API_KEY,
             "Content-Type": "application/json"
@@ -115,15 +194,28 @@ def generate_speech(text, voice_id=ELEVENLABS_VOICE_ID):
         
         payload = {
             "text": text,
-            "model_id": "eleven_monolingual_v1",
+            "model_id": "eleven_flash_v2_5",
             "voice_settings": {
-                "stability": 0.5,
+                "stability": 0.75,
                 "similarity_boost": 0.5
             }
         }
         
+        # First check for user-specific voice if user_id is provided
+        voice_id_to_use = None
+        if user_id:
+            voice_id_to_use = get_user_voice(user_id)
+        
+        # Fall back to provided voice_id if user doesn't have an assigned voice
+        if not voice_id_to_use:
+            voice_id_to_use = voice_id if voice_id else ELEVENLABS_VOICE_ID
+        
+        if not voice_id_to_use:
+            logger.error("No voice ID determined and no default voice ID configured")
+            return None
+            
         response = requests.post(
-            f"{ELEVENLABS_TTS_URL}/{voice_id}",
+            f"{ELEVENLABS_TTS_URL}/{voice_id_to_use}",
             headers=headers,
             json=payload
         )
@@ -141,4 +233,54 @@ def generate_speech(text, voice_id=ELEVENLABS_VOICE_ID):
             
     except Exception as e:
         logger.error(f"Error in text-to-speech: {e}")
-        return None 
+        return None
+
+def load_voice_assignments():
+    """Load user voice assignments from user_voice_assignments.json"""
+    try:
+        with open("user_voice_assignments.json", "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        logger.info("No existing voice assignments found or invalid JSON. Creating new assignments.")
+        return {}
+
+def save_voice_assignments(assignments):
+    """Save user voice assignments to user_voice_assignments.json"""
+    with open("user_voice_assignments.json", "w") as f:
+        json.dump(assignments, f, indent=2)
+    logger.info(f"Saved voice assignments for {len(assignments)} users")
+
+def get_user_voice(user_id):
+    """Get a user's assigned voice ID, or assign a new one if none exists"""
+    assignments = load_voice_assignments()
+    
+    # If user already has an assigned voice, return it
+    if str(user_id) in assignments:
+        voice_id = assignments[str(user_id)]
+        logger.info(f"Found existing voice assignment for user {user_id}: {voice_id}")
+        return voice_id
+    
+    # Otherwise, assign a new voice randomly
+    voices = get_elevenlabs_voices()
+    
+    if not voices:
+        logger.warning("No voices available to assign to user")
+        return ELEVENLABS_VOICE_ID
+    
+    # Pick a random voice
+    random_voice = random.choice(voices)
+    voice_id = random_voice.get("voice_id")
+    
+    # Save the assignment
+    assignments[str(user_id)] = voice_id
+    save_voice_assignments(assignments)
+    logger.info(f"Assigned new voice to user {user_id}: {voice_id}")
+    return voice_id
+
+def assign_voice_to_user(user_id, voice_id):
+    """Manually assign a specific voice to a user"""
+    assignments = load_voice_assignments()
+    assignments[str(user_id)] = voice_id
+    save_voice_assignments(assignments)
+    logger.info(f"Manually assigned voice {voice_id} to user {user_id}")
+    return True 

@@ -6,7 +6,7 @@ import os
 import logging
 import discord
 from discord.sinks import Sink
-from api_services import transcribe_audio, translate_text, generate_speech
+from api_services import transcribe_audio, translate_text, generate_speech, get_elevenlabs_voices, get_user_voice
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,15 @@ def process_user_audio(user_id, audio_queue, text_channel, voice_client, target_
     silence_threshold = 0.5  # seconds of silence to consider end of speech
     last_audio_time = None
     
+    # Cache available voices
+    all_voices = get_elevenlabs_voices()
+    
+    # Get user's input language preference if available
+    source_lang = "English"  # Default
+    if bot and hasattr(bot, 'user_input_languages') and user_id in bot.user_input_languages:
+        source_lang = bot.user_input_languages[user_id]
+        logger.info(f"Using custom input language for user {user_id}: {source_lang}")
+    
     while True:
         try:
             # Wait for audio data with timeout
@@ -80,33 +89,37 @@ def process_user_audio(user_id, audio_queue, text_channel, voice_client, target_
                     
                     if transcription:
                         # Step 2: Translate the text
-                        logger.info(f"Translating text to {target_lang}...")
+                        logger.info(f"Translating text from {source_lang} to {target_lang}...")
                         translation = translate_text(
                             transcription, 
-                            source_lang="English", 
+                            source_lang=source_lang, 
                             target_lang=target_lang
                         )
                         logger.info(f"Translation result: '{translation}'")
                         
                         # Step 3: Send text to Discord
                         asyncio.run_coroutine_threadsafe(
-                            text_channel.send(f'**User {user_id}**: {transcription}\n**Translated**: {translation}'),
+                            text_channel.send(f'**User {user_id}** ({source_lang}): {transcription}\n**Translated** ({target_lang}): {translation}'),
                             bot.loop if bot else asyncio.get_event_loop()
                         )
                         
-                        # Step 4: Generate and play speech
+                        # Step 4: Get user-specific voice
+                        logger.info(f"Getting voice for user {user_id}...")
+                        
+                        # Step 5: Generate and play speech with user's voice
                         logger.info("Generating speech...")
-                        audio_file_path = generate_speech(translation)
-                        if audio_file_path and voice_client and voice_client.is_connected():
-                            logger.info(f"Playing audio from {audio_file_path}")
+                        audio_file_path = generate_speech(translation, user_id=user_id)
+                        
+                        if audio_file_path:
+                            # Step 6: Play the audio
+                            logger.info(f"Playing audio file: {audio_file_path}")
                             asyncio.run_coroutine_threadsafe(
                                 play_audio(voice_client, audio_file_path),
                                 bot.loop if bot else asyncio.get_event_loop()
                             )
                         else:
-                            logger.warning(f"Failed to play audio: file_path={audio_file_path}, voice_client_connected={voice_client and voice_client.is_connected()}")
-                    else:
-                        logger.warning("No transcription result, skipping translation")
+                            logger.error("Failed to generate speech")
+                            
                 except Exception as e:
                     logger.error(f"Error processing audio: {e}")
                 

@@ -2,6 +2,7 @@ import discord
 import logging
 from discord.ext import commands
 from audio_processing import TranslationSink
+from api_services import get_elevenlabs_voices, assign_voice_to_user
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -17,6 +18,8 @@ class TranslatorBot(commands.Bot):
         
         # Default target language
         self.target_language = "Spanish"
+        # Dictionary to store user input languages
+        self.user_input_languages = {}
         
         # Register commands
         self.add_commands()
@@ -109,6 +112,9 @@ class TranslatorBot(commands.Bot):
                 f"- `!join` - Join your voice channel and start translating\n"
                 f"- `!leave` - Leave the voice channel\n"
                 f"- `!setlang [language]` - Set target language\n"
+                f"- `!input [language]` - Set your source language\n"
+                f"- `!setvoice [number]` - Set your TTS voice\n"
+                f"- `!myconfig` - View your language settings\n"
                 f"- `!languages` - List available languages\n"
                 f"- `!info` - Show this information"
             )
@@ -119,6 +125,84 @@ class TranslatorBot(commands.Bot):
         async def ping(ctx):
             """Simple ping command to check if bot is responsive"""
             await ctx.send('Pong!')
+
+        @self.command()
+        async def input(ctx, language):
+            """Set the source language for the user"""
+            user_id = ctx.author.id
+            self.user_input_languages[user_id] = language
+            await ctx.send(f"Your input language has been set to {language}")
+
+        @self.command()
+        async def myconfig(ctx):
+            """Show a user's current language settings"""
+            user_id = ctx.author.id
+            input_lang = self.user_input_languages.get(user_id, "English")
+            
+            # Get voice information
+            voice_name = "Default"
+            voice_index = "N/A"
+            
+            assignments = load_voice_assignments()
+            voices = get_elevenlabs_voices()
+            
+            if str(user_id) in assignments:
+                voice_id = assignments[str(user_id)]
+                for i, voice in enumerate(voices):
+                    if voice.get("voice_id") == voice_id:
+                        voice_name = voice.get("name", "Unknown")
+                        voice_index = i + 1  # Convert to 1-based index for display
+                        break
+            
+            await ctx.send(f"Your settings:\n- Input language: {input_lang}\n- Output language: {self.target_language}\n- Voice: {voice_name} (#{voice_index})")
+
+        @self.command()
+        async def setvoice(ctx, voice_index=None):
+            """Set the user's TTS voice by index"""
+            user_id = ctx.author.id
+            
+            # Get available voices
+            voices = get_elevenlabs_voices()
+            if not voices:
+                await ctx.send("Could not fetch available voices. Please check if voices.json exists and is valid.")
+                return
+            
+            # If no index provided, list available voices
+            if voice_index is None:
+                voice_list = ""
+                for i, voice in enumerate(voices):
+                    voice_list += f"{i+1}. {voice.get('name', 'Unknown')}\n"
+                
+                # Create embed with voice list
+                embed = discord.Embed(title="Available Voices", 
+                                     description="Use `!setvoice [number]` to select a voice.",
+                                     color=0x00ff00)
+                embed.add_field(name="Voice Options", value=voice_list, inline=False)
+                
+                await ctx.send(embed=embed)
+                return
+            
+            # Try to convert input to integer
+            try:
+                index = int(voice_index) - 1  # Convert to 0-based index
+                
+                # Check if index is valid
+                if index < 0 or index >= len(voices):
+                    await ctx.send(f"Invalid voice number. Please choose a number between 1 and {len(voices)}.")
+                    return
+                
+                # Get the selected voice
+                selected_voice = voices[index]
+                voice_id = selected_voice.get("voice_id")
+                voice_name = selected_voice.get("name")
+                
+                # Assign the voice to the user
+                assign_voice_to_user(user_id, voice_id)
+                
+                await ctx.send(f"Your voice has been set to {voice_name}!")
+                
+            except ValueError:
+                await ctx.send("Please provide a valid number for the voice selection.")
 
     @commands.Cog.listener()
     async def on_ready(self):
