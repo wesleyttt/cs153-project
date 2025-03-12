@@ -17,6 +17,8 @@ class TranslatorBot(commands.Bot):
         
         # Default target language
         self.target_language = "Spanish"
+        # Dictionary to store user input languages
+        self.user_input_languages = {}
         
         # Register commands
         self.add_commands()
@@ -109,6 +111,8 @@ class TranslatorBot(commands.Bot):
                 f"- `!join` - Join your voice channel and start translating\n"
                 f"- `!leave` - Leave the voice channel\n"
                 f"- `!setlang [language]` - Set target language\n"
+                f"- `!input [language]` - Set your source language\n"
+                f"- `!myconfig` - View your language settings\n"
                 f"- `!languages` - List available languages\n"
                 f"- `!info` - Show this information"
             )
@@ -119,6 +123,20 @@ class TranslatorBot(commands.Bot):
         async def ping(ctx):
             """Simple ping command to check if bot is responsive"""
             await ctx.send('Pong!')
+
+        @self.command()
+        async def input(ctx, language):
+            """Set the source language for the user"""
+            user_id = ctx.author.id
+            self.user_input_languages[user_id] = language
+            await ctx.send(f"Your input language has been set to {language}")
+
+        @self.command()
+        async def myconfig(ctx):
+            """Show a user's current language settings"""
+            user_id = ctx.author.id
+            input_lang = self.user_input_languages.get(user_id, "English")
+            await ctx.send(f"Your settings:\n- Input language: {input_lang}\n- Output language: {self.target_language}")
 
     @commands.Cog.listener()
     async def on_ready(self):

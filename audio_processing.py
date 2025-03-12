@@ -58,6 +58,12 @@ def process_user_audio(user_id, audio_queue, text_channel, voice_client, target_
     # Cache available voices
     all_voices = get_elevenlabs_voices()
     
+    # Get user's input language preference if available
+    source_lang = "English"  # Default
+    if bot and hasattr(bot, 'user_input_languages') and user_id in bot.user_input_languages:
+        source_lang = bot.user_input_languages[user_id]
+        logger.info(f"Using custom input language for user {user_id}: {source_lang}")
+    
     while True:
         try:
             # Wait for audio data with timeout
@@ -83,17 +89,17 @@ def process_user_audio(user_id, audio_queue, text_channel, voice_client, target_
                     
                     if transcription:
                         # Step 2: Translate the text
-                        logger.info(f"Translating text to {target_lang}...")
+                        logger.info(f"Translating text from {source_lang} to {target_lang}...")
                         translation = translate_text(
                             transcription, 
-                            source_lang="English", 
+                            source_lang=source_lang, 
                             target_lang=target_lang
                         )
                         logger.info(f"Translation result: '{translation}'")
                         
                         # Step 3: Send text to Discord
                         asyncio.run_coroutine_threadsafe(
-                            text_channel.send(f'**User {user_id}**: {transcription}\n**Translated**: {translation}'),
+                            text_channel.send(f'**User {user_id}** ({source_lang}): {transcription}\n**Translated** ({target_lang}): {translation}'),
                             bot.loop if bot else asyncio.get_event_loop()
                         )
                         
