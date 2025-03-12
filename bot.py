@@ -2,7 +2,12 @@ import discord
 import logging
 from discord.ext import commands
 from audio_processing import TranslationSink
-from api_services import get_elevenlabs_voices, assign_voice_to_user
+from api_services import (
+    get_elevenlabs_voices, assign_voice_to_user,
+    get_user_input_language, get_user_output_language,
+    set_user_input_language, set_user_output_language,
+    load_voice_assignments
+)
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -84,9 +89,15 @@ class TranslatorBot(commands.Bot):
 
         @self.command()
         async def setlang(ctx, language):
-            """Set the target translation language"""
+            """Set the target translation language (both global and personal)"""
+            # Update bot's global default
             self.target_language = language
-            await ctx.send(f"Target language set to {language}")
+            
+            # Also update this user's output language
+            user_id = ctx.author.id
+            set_user_output_language(user_id, language)
+            
+            await ctx.send(f"Target language set to {language} (globally and for your personal output)")
 
         @self.command()
         async def languages(ctx):
@@ -104,15 +115,16 @@ class TranslatorBot(commands.Bot):
             """Show information about the bot"""
             info_message = (
                 f"**Discord Voice Translator**\n"
-                f"- Target Language: {self.target_language}\n"
+                f"- Global Default Target Language: {self.target_language}\n"
                 f"- Speech Recognition: ElevenLabs\n"
                 f"- Translation: Mistral AI\n"
                 f"- Text-to-Speech: ElevenLabs\n\n"
                 f"**Commands**\n"
                 f"- `!join` - Join your voice channel and start translating\n"
                 f"- `!leave` - Leave the voice channel\n"
-                f"- `!setlang [language]` - Set target language\n"
+                f"- `!setlang [language]` - Set target language (global default and your output)\n"
                 f"- `!input [language]` - Set your source language\n"
+                f"- `!output [language]` - Set your output language\n"
                 f"- `!setvoice [number]` - Set your TTS voice\n"
                 f"- `!myconfig` - View your language settings\n"
                 f"- `!languages` - List available languages\n"
@@ -130,14 +142,24 @@ class TranslatorBot(commands.Bot):
         async def input(ctx, language):
             """Set the source language for the user"""
             user_id = ctx.author.id
-            self.user_input_languages[user_id] = language
+            set_user_input_language(user_id, language)
             await ctx.send(f"Your input language has been set to {language}")
+
+        @self.command()
+        async def output(ctx, language):
+            """Set the output language for the user"""
+            user_id = ctx.author.id
+            set_user_output_language(user_id, language)
+            await ctx.send(f"Your output language has been set to {language}")
 
         @self.command()
         async def myconfig(ctx):
             """Show a user's current language settings"""
             user_id = ctx.author.id
-            input_lang = self.user_input_languages.get(user_id, "English")
+            
+            # Get language preferences
+            input_lang = get_user_input_language(user_id, default="English")
+            output_lang = get_user_output_language(user_id, default=self.target_language)
             
             # Get voice information
             voice_name = "Default"
@@ -154,7 +176,7 @@ class TranslatorBot(commands.Bot):
                         voice_index = i + 1  # Convert to 1-based index for display
                         break
             
-            await ctx.send(f"Your settings:\n- Input language: {input_lang}\n- Output language: {self.target_language}\n- Voice: {voice_name} (#{voice_index})")
+            await ctx.send(f"Your settings:\n- Input language: {input_lang}\n- Output language: {output_lang}\n- Voice: {voice_name} (#{voice_index})")
 
         @self.command()
         async def setvoice(ctx, voice_index=None):
