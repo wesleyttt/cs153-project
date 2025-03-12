@@ -10,6 +10,8 @@ from config import (
     ELEVENLABS_TTS_URL, ELEVENLABS_STT_URL, 
     MISTRAL_API_URL, ELEVENLABS_VOICE_ID
 )
+import json
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +104,7 @@ def transcribe_audio(audio_data):
             try:
                 logger.error(f"Full response: {response.json()}")
             except:
-                logger.error(f"Could not parse response as JSON")
+                logger.error("Could not parse response as JSON")
             return ""
             
     except Exception as e:
@@ -165,74 +167,26 @@ def translate_text(text, source_lang="English", target_lang="Spanish"):
         return text
 
 def get_elevenlabs_voices():
-    """Fetch all available voices from ElevenLabs API"""
-    api_key = ELEVENLABS_API_KEY
-    if not api_key:
-        logger.error("ELEVENLABS_API_KEY is missing")
-        return []
-    
-    headers = {
-        "xi-api-key": api_key
-    }
-    
+    """Fetch all available voices from voices.json"""
     try:
-        response = requests.get("https://api.elevenlabs.io/v1/voices", headers=headers)
-        response.raise_for_status()
-        voices = response.json().get("voices", [])
-        return voices
-    except Exception as e:
-        logger.error(f"Error fetching ElevenLabs voices: {e}")
+        with open("voices.json", "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        logger.error("Error loading voices.json")
         return []
 
-def select_voice_for_language(target_lang, voices=None):
-    """Select appropriate voice for target language"""
-    if voices is None:
-        voices = get_elevenlabs_voices()
-    
-    logger.info(f"Selecting voice for language {target_lang}. Found {len(voices)} voices.")
-    
-    # Define preferred voices for common languages
-    language_voice_map = {
-        "Spanish": ["Antonio", "Mia", "Pedro"],
-        "French": ["Nicole", "Rémi", "Alain"],
-        "German": ["Hans", "Greta", "Stefan"],
-        "Italian": ["Valentina", "Matteo", "Gianni"],
-        "Portuguese": ["Thiago", "Luiza"],
-        "Japanese": ["Hiroto", "Yuka"],
-        "Chinese": ["Li", "Wang"],
-        "Russian": ["Alexei", "Natasha"],
-        # Add more language-voice mappings as needed
-    }
-    
-    # Default to English voice if no match
-    default_voices = ["Adam", "Bella", "Josh"]
-    
-    # Get preferred voices for target language
-    preferred_voices = language_voice_map.get(target_lang, default_voices)
-    logger.info(f"Preferred voices for {target_lang}: {preferred_voices}")
-    
-    # Find first available preferred voice
-    for preferred_name in preferred_voices:
-        for voice in voices:
-            voice_name = voice.get("name", "")
-            if preferred_name.lower() in voice_name.lower():
-                voice_id = voice.get("voice_id")
-                logger.info(f"Found matching voice: {voice_name} (ID: {voice_id})")
-                return voice_id
-    
-    # If no preferred voice found, return first available voice
-    if voices:
-        first_voice_id = voices[0].get("voice_id")
-        first_voice_name = voices[0].get("name", "")
-        logger.info(f"No preferred voice found, using first available: {first_voice_name} (ID: {first_voice_id})")
-        return first_voice_id
-    
-    logger.warning("No voices available, falling back to default voice ID")
-    return ELEVENLABS_VOICE_ID  # Return the default voice ID
-
-def generate_speech(text, voice_id=None):
+def generate_speech(text, voice_id=None, user_id=None):
     """Generate speech from text using ElevenLabs API"""
+    if not text or not text.strip():
+        logger.warning("Empty text provided to speech generation")
+        return None
+        
     try:
+        # Verify API key first
+        if not ELEVENLABS_API_KEY:
+            logger.error("ELEVENLABS_API_KEY is missing or empty")
+            return None
+            
         headers = {
             "xi-api-key": ELEVENLABS_API_KEY,
             "Content-Type": "application/json"
@@ -247,11 +201,17 @@ def generate_speech(text, voice_id=None):
             }
         }
         
-        # Use provided voice_id, fall back to default ELEVENLABS_VOICE_ID
-        voice_id_to_use = voice_id if voice_id else ELEVENLABS_VOICE_ID
+        # First check for user-specific voice if user_id is provided
+        voice_id_to_use = None
+        if user_id:
+            voice_id_to_use = get_user_voice(user_id)
+        
+        # Fall back to provided voice_id if user doesn't have an assigned voice
+        if not voice_id_to_use:
+            voice_id_to_use = voice_id if voice_id else ELEVENLABS_VOICE_ID
         
         if not voice_id_to_use:
-            logger.error("No voice ID provided and no default voice ID configured")
+            logger.error("No voice ID determined and no default voice ID configured")
             return None
             
         response = requests.post(
@@ -273,4 +233,54 @@ def generate_speech(text, voice_id=None):
             
     except Exception as e:
         logger.error(f"Error in text-to-speech: {e}")
-        return None 
+        return None
+
+def load_voice_assignments():
+    """Load user voice assignments from user_voice_assignments.json"""
+    try:
+        with open("user_voice_assignments.json", "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        logger.info("No existing voice assignments found or invalid JSON. Creating new assignments.")
+        return {}
+
+def save_voice_assignments(assignments):
+    """Save user voice assignments to user_voice_assignments.json"""
+    with open("user_voice_assignments.json", "w") as f:
+        json.dump(assignments, f, indent=2)
+    logger.info(f"Saved voice assignments for {len(assignments)} users")
+
+def get_user_voice(user_id):
+    """Get a user's assigned voice ID, or assign a new one if none exists"""
+    assignments = load_voice_assignments()
+    
+    # If user already has an assigned voice, return it
+    if str(user_id) in assignments:
+        voice_id = assignments[str(user_id)]
+        logger.info(f"Found existing voice assignment for user {user_id}: {voice_id}")
+        return voice_id
+    
+    # Otherwise, assign a new voice randomly
+    voices = get_elevenlabs_voices()
+    
+    if not voices:
+        logger.warning("No voices available to assign to user")
+        return ELEVENLABS_VOICE_ID
+    
+    # Pick a random voice
+    random_voice = random.choice(voices)
+    voice_id = random_voice.get("voice_id")
+    
+    # Save the assignment
+    assignments[str(user_id)] = voice_id
+    save_voice_assignments(assignments)
+    logger.info(f"Assigned new voice to user {user_id}: {voice_id}")
+    return voice_id
+
+def assign_voice_to_user(user_id, voice_id):
+    """Manually assign a specific voice to a user"""
+    assignments = load_voice_assignments()
+    assignments[str(user_id)] = voice_id
+    save_voice_assignments(assignments)
+    logger.info(f"Manually assigned voice {voice_id} to user {user_id}")
+    return True 

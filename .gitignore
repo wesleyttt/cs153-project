@@ -12,3 +12,4 @@ wheels/
 # Secrets
 .env
 secrets.txt
+scratch.py
