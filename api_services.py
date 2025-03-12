@@ -125,8 +125,25 @@ def translate_text(text, source_lang="English", target_lang="Spanish"):
         "model": "mistral-small-latest",
         "messages": [
             {
-                "role": "system", 
-                "content": f"You are a translator. Translate the following text from {source_lang} to {target_lang}. Only respond with the translated text, nothing else."
+                "role": "system",
+                "content": f"""You are a translator. Translate the following text from {source_lang} to {target_lang}. Only respond with the translated text, nothing else. If the input is a question, do not respond to the question, only respond with the translated question.
+
+                Example: source_lang = English, target_lang = Spanish
+                Input: What is the capital of France?
+                Output: ¿Cuál es la capital de Francia?
+
+                Example: source_lang = Chinese, target_lang = English  
+                Input: 你現在在講什麼語言？
+                Output: What language are you speaking now?
+
+                Example: source_lang = Spanish, target_lang = French
+                Input: El clima es agradable hoy.
+                Output: Il fait beau aujourd'hui.
+
+                ----
+                Current translation:
+                From {source_lang} to {target_lang}
+                Input: """
             },
             {
                 "role": "user",
