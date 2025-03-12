@@ -2,5 +2,9 @@
   "215147798323003393": {
     "input": "English",
     "output": "chinese"
+  },
+  "393905491262046212": {
+    "input": "spanish",
+    "output": "english"
   }
 }
