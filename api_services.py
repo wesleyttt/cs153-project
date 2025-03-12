@@ -250,15 +250,25 @@ def generate_speech(text, voice_id=None, user_id=None):
         display_text = text if len(text) < 100 else f"{text[:97]}..."
         logger.info(f"Converting text to speech: '{display_text}'")
         
-        payload = {
-            "text": text,
-            "model_id": "eleven_flash_v2_5",
-            "voice_settings": {
-                "stability": 0.75,
-                "similarity_boost": 0.5
-            },
-            "language_code": language_code
-        }
+        if get_user_singleplayer_mode(user_id):
+            payload = {
+                "text": text,
+                "model_id": "eleven_flash_v2_5",
+                "voice_settings": {
+                    "stability": 0.75,
+                    "similarity_boost": 0.5
+                }
+            }
+        else:
+            payload = {
+                "text": text,
+                "model_id": "eleven_flash_v2_5",
+                "voice_settings": {
+                    "stability": 0.75,
+                    "similarity_boost": 0.5
+                },
+                "language_code": language_code
+            }
         
         # First check for user-specific voice if user_id is provided
         voice_id_to_use = None
@@ -422,4 +432,75 @@ def set_user_output_language(user_id, language):
     preferences[user_id_str]["output"] = language
     save_user_languages(preferences)
     logger.info(f"Set output language for user {user_id} to {language}")
-    return True 
+    return True
+
+def get_user_singleplayer_mode(user_id, default=False):
+    """Get a user's singleplayer mode setting, or return default if none exists"""
+    preferences = load_user_languages()
+    user_id_str = str(user_id)
+    
+    if user_id_str in preferences and "singleplayer" in preferences[user_id_str]:
+        singleplayer = preferences[user_id_str]["singleplayer"]
+        logger.info(f"Found existing singleplayer setting for user {user_id}: {singleplayer}")
+        return singleplayer
+        
+    # If no preference exists, return default
+    logger.info(f"No singleplayer setting for user {user_id}, using default: {default}")
+    return default
+
+def set_user_singleplayer_mode(user_id, enabled):
+    """Set a user's singleplayer mode"""
+    preferences = load_user_languages()
+    user_id_str = str(user_id)
+    
+    if user_id_str not in preferences:
+        preferences[user_id_str] = {}
+    
+    preferences[user_id_str]["singleplayer"] = enabled
+    save_user_languages(preferences)
+    logger.info(f"Set singleplayer mode for user {user_id} to {enabled}")
+    return True
+
+def handle_language_query(text, target_language):
+    """Handle a language learning query using Mistral AI"""
+    if not text.strip():
+        return ""
+        
+    headers = {
+        "Authorization": f"Bearer {MISTRAL_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": "mistral-small-latest",
+        "messages": [
+            {
+                "role": "system",
+                "content": f"""You are a language instructor for {target_language}. 
+                The user is learning {target_language} and will ask questions about how to say things
+                or ask for explanations of grammar and vocabulary. 
+                
+                For translation requests, provide:
+                1. The translation in {target_language}
+                
+                Keep responses very concise but informative, absolutely no more than 1-2 sentences. Be encouraging and friendly. Do not output anything in parenthesis, ____, or other formatting.
+                """
+            },
+            {
+                "role": "user",
+                "content": text
+            }
+        ],
+        "temperature": 0.7
+    }
+    
+    try:
+        response = requests.post(MISTRAL_API_URL, headers=headers, json=payload)
+        if response.status_code == 200:
+            return response.json()["choices"][0]["message"]["content"]
+        else:
+            logger.error(f"Language query error: {response.status_code} - {response.text}")
+            return "I'm sorry, I had trouble processing your request. Please try again."
+    except Exception as e:
+        logger.error(f"Error in language query: {e}")
+        return "I'm sorry, an error occurred. Please try again." 

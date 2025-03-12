@@ -6,7 +6,7 @@ import os
 import logging
 import discord
 from discord.sinks import Sink
-from api_services import transcribe_audio, translate_text, generate_speech, get_elevenlabs_voices, get_user_voice, get_user_input_language, get_user_output_language
+from api_services import transcribe_audio, translate_text, generate_speech, get_elevenlabs_voices, get_user_voice, get_user_input_language, get_user_output_language, get_user_singleplayer_mode, handle_language_query
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,10 @@ def process_user_audio(user_id, audio_queue, text_channel, voice_client, target_
     output_lang = get_user_output_language(user_id, default=target_lang)
     logger.info(f"Using output language for user {user_id}: {output_lang}")
     
+    # Check if user is in singleplayer mode
+    singleplayer_mode = get_user_singleplayer_mode(user_id, default=False)
+    logger.info(f"User {user_id} singleplayer mode: {singleplayer_mode}")
+    
     while True:
         try:
             # Wait for audio data with timeout
@@ -87,34 +91,60 @@ def process_user_audio(user_id, audio_queue, text_channel, voice_client, target_
                     logger.info(f"Transcription result: '{transcription}'")
                     
                     if transcription:
-                        # Step 2: Translate the text - use user's personal language preferences
-                        logger.info(f"Translating text from {source_lang} to {output_lang}...")
-                        translation = translate_text(
-                            transcription, 
-                            source_lang=source_lang, 
-                            target_lang=output_lang
-                        )
-                        logger.info(f"Translation result: '{translation}'")
-                        
-                        # Step 3: Send text to Discord
-                        asyncio.run_coroutine_threadsafe(
-                            text_channel.send(f'**User {user_id}** ({source_lang}): {transcription}\n**Translated** ({output_lang}): {translation}'),
-                            bot.loop if bot else asyncio.get_event_loop()
-                        )
-                        
-                        # Step 4-6: Generate and play speech with user's voice
-                        logger.info("Generating speech...")
-                        audio_file_path = generate_speech(translation, user_id=user_id)
-                        
-                        if audio_file_path:
-                            logger.info(f"Playing audio file: {audio_file_path}")
+                        if singleplayer_mode:
+                            # Handle as language learning query instead of translation
+                            logger.info(f"Processing singleplayer query: '{transcription}'")
+                            response = handle_language_query(transcription, output_lang)
+                            
+                            # Send response to Discord
                             asyncio.run_coroutine_threadsafe(
-                                play_audio(voice_client, audio_file_path),
+                                text_channel.send(f'**You said**: {transcription}\n\n**Language Instructor ({output_lang})**: {response}'),
                                 bot.loop if bot else asyncio.get_event_loop()
                             )
-                        else:
-                            logger.error("Failed to generate speech")
                             
+                            # Generate speech for the response
+                            logger.info("Generating speech for language instructor response...")
+                            audio_file_path = generate_speech(response, user_id=user_id)
+                            
+                            if audio_file_path:
+                                logger.info(f"Playing audio file: {audio_file_path}")
+                                asyncio.run_coroutine_threadsafe(
+                                    play_audio(voice_client, audio_file_path),
+                                    bot.loop if bot else asyncio.get_event_loop()
+                                )
+                            else:
+                                logger.error("Failed to generate speech for instructor response")
+                                
+                        else:
+                            # Regular translation mode
+                            # Step 2: Translate the text - use user's personal language preferences
+                            logger.info(f"Translating text from {source_lang} to {output_lang}...")
+                            translation = translate_text(
+                                transcription, 
+                                source_lang=source_lang, 
+                                target_lang=output_lang
+                            )
+                            logger.info(f"Translation result: '{translation}'")
+                            
+                            # Step 3: Send text to Discord
+                            asyncio.run_coroutine_threadsafe(
+                                text_channel.send(f'**User {user_id}** ({source_lang}): {transcription}\n**Translated** ({output_lang}): {translation}'),
+                                bot.loop if bot else asyncio.get_event_loop()
+                            )
+                            
+                            # Step 4-6: Generate and play speech with user's voice
+                            logger.info("Generating speech...")
+                            audio_file_path = generate_speech(translation, user_id=user_id)
+                            
+                            if audio_file_path:
+                                logger.info(f"Playing audio file: {audio_file_path}")
+                                asyncio.run_coroutine_threadsafe(
+                                    play_audio(voice_client, audio_file_path),
+                                    bot.loop if bot else asyncio.get_event_loop()
+                                )
+                            else:
+                                logger.error("Failed to generate speech")
+                                
                 except Exception as e:
                     logger.error(f"Error processing audio: {e}")
                 
