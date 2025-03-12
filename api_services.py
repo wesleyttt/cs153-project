@@ -146,7 +146,7 @@ def transcribe_audio(audio_data, user_id=None):
             # Add full response dump for debugging
             try:
                 logger.error(f"Full response: {response.json()}")
-            except:
+            except json.JSONDecodeError:
                 logger.error("Could not parse response as JSON")
             return ""
             
@@ -297,7 +297,7 @@ def generate_speech(text, voice_id=None, user_id=None):
             logger.error(f"TTS error: {response.status_code} - {response.text}")
             try:
                 logger.error(f"Full error response: {response.json()}")
-            except:
+            except json.JSONDecodeError:
                 logger.error("Could not parse error response as JSON")
             return None
             

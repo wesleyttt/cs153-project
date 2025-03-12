@@ -106,6 +106,9 @@ For Opus-related issues:
 - On Linux: Install using package manager: `sudo apt-get install libopus0`
 - On Windows: The bot should handle Opus automatically
 
+### If the translation is showing up in the text channel, but not in the voice channel:
+- Contact wesleytj@stanford.edu to reset the bot (known issue with ElevenLabs API text to speech)
+
 ## Environment Variables
 
 - `DISCORD_TOKEN` - Your Discord bot token
