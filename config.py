@@ -39,7 +39,7 @@ MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY") or secrets.get("MISTRAL_API_KEY")
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN") or secrets.get("DISCORD_TOKEN")
 
 # Default ElevenLabs voice ID
-ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "9BWtsMINqrJLrRacOk9x")
 
 # API URLs
 ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech"

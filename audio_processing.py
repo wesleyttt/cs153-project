@@ -6,7 +6,7 @@ import os
 import logging
 import discord
 from discord.sinks import Sink
-from api_services import transcribe_audio, translate_text, generate_speech, get_elevenlabs_voices, select_voice_for_language
+from api_services import transcribe_audio, translate_text, generate_speech, select_voice_for_user
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,7 @@ class TranslationSink(Sink):
             # Get target language from bot settings
             bot = getattr(self, 'bot', None)
             target_lang = getattr(bot, 'target_language', 'Spanish') if bot else 'Spanish'
+            input_lang = getattr(bot, 'input_language', 'English') if bot else 'English'
             
             # Start processing thread
             text_channel = getattr(self, 'text_channel', None)
@@ -34,7 +35,7 @@ class TranslationSink(Sink):
             if text_channel and voice_client:
                 thread = threading.Thread(
                     target=process_user_audio,
-                    args=(user_id, self.user_queues[user_id], text_channel, voice_client, target_lang, bot)
+                    args=(user_id, self.user_queues[user_id], text_channel, voice_client, target_lang, bot, input_lang)
                 )
                 thread.daemon = True  # Make thread exit when main program exits
                 thread.start()
@@ -48,16 +49,13 @@ class TranslationSink(Sink):
         for user_id in list(self.user_queues.keys()):
             self.user_queues[user_id].put(None)  # Signal threads to end
 
-def process_user_audio(user_id, audio_queue, text_channel, voice_client, target_lang="Spanish", bot=None):
+def process_user_audio(user_id, audio_queue, text_channel, voice_client, target_lang="Spanish", bot=None, input_lang="English"):
     """Process audio from a user in a separate thread"""
-    logger.info(f"Started processing audio for user {user_id}")
+    logger.info(f"Started processing audio for user {user_id} (Input: {input_lang}, Target: {target_lang})")
     accumulated_audio = bytearray()
     silence_threshold = 0.5  # seconds of silence to consider end of speech
     last_audio_time = None
-    
-    # Cache available voices
-    all_voices = get_elevenlabs_voices()
-    
+        
     while True:
         try:
             # Wait for audio data with timeout
@@ -76,17 +74,17 @@ def process_user_audio(user_id, audio_queue, text_channel, voice_client, target_
                 logger.info(f"Processing accumulated audio for user {user_id}, size: {len(accumulated_audio)} bytes")
                 
                 try:
-                    # Step 1: Transcribe the audio
-                    logger.info("Calling transcribe_audio...")
-                    transcription = transcribe_audio(accumulated_audio)
+                    # Step 1: Transcribe the audio with specified input language
+                    logger.info(f"Calling transcribe_audio with input language: {input_lang}...")
+                    transcription = transcribe_audio(accumulated_audio, input_lang)
                     logger.info(f"Transcription result: '{transcription}'")
                     
                     if transcription:
                         # Step 2: Translate the text
-                        logger.info(f"Translating text to {target_lang}...")
+                        logger.info(f"Translating text from {input_lang} to {target_lang}...")
                         translation = translate_text(
                             transcription, 
-                            source_lang="English", 
+                            source_lang=input_lang, 
                             target_lang=target_lang
                         )
                         logger.info(f"Translation result: '{translation}'")
@@ -97,13 +95,13 @@ def process_user_audio(user_id, audio_queue, text_channel, voice_client, target_
                             bot.loop if bot else asyncio.get_event_loop()
                         )
                         
-                        # Step 4: Select appropriate voice for the target language
-                        voice_id = select_voice_for_language(target_lang, all_voices)
-                        logger.info(f"Selected voice ID {voice_id} for language {target_lang}")
+                        # Step 4: Select appropriate voice for the target language and user
+                        voice_id = select_voice_for_user(user_id, target_lang)
+                        logger.info(f"Selected voice ID {voice_id} for user {user_id} and language {target_lang}")
                         
                         # Step 5: Generate and play speech with selected voice
                         logger.info("Generating speech...")
-                        audio_file_path = generate_speech(translation, voice_id)
+                        audio_file_path = generate_speech(translation, user_id=user_id, target_lang=target_lang)
                         if audio_file_path and voice_client and voice_client.is_connected():
                             logger.info(f"Playing audio from {audio_file_path}")
                             asyncio.run_coroutine_threadsafe(
@@ -121,63 +119,66 @@ def process_user_audio(user_id, audio_queue, text_channel, voice_client, target_
                 accumulated_audio = bytearray()
 
 async def play_audio(voice_client, file_path):
-    """Play audio in Discord voice channel"""
-    if voice_client and voice_client.is_connected():
-        # Pause recording while playing
-        was_recording = voice_client.recording
-        if was_recording:
-            voice_client.stop_recording()
+    """Play an audio file in the voice channel"""
+    logger.info(f"Playing audio from {file_path}")
+    
+    # Check if we're currently recording
+    was_recording = voice_client._recorder is not None
+    
+    # Stop recording while we play audio
+    if was_recording:
+        voice_client.stop_recording()
+    
+    # Play the audio
+    voice_client.play(discord.FFmpegPCMAudio(file_path))
+    
+    # Wait until the audio finishes playing
+    while voice_client.is_playing():
+        await asyncio.sleep(0.1)
         
-        # Play the audio
-        voice_client.play(discord.FFmpegPCMAudio(file_path))
-        
-        # Wait for playback to complete
-        while voice_client.is_playing():
-            await asyncio.sleep(0.1)
-        
-        # Clean up
-        os.unlink(file_path)
-        
-        # Resume recording with proper callback format
-        if was_recording:
-            # Recreate the sink with existing settings
-            if hasattr(voice_client, 'last_sink'):
-                sink = voice_client.last_sink
-                
-                # Make sure we preserve the original text channel reference
-                original_text_channel = getattr(voice_client, 'original_text_channel', None)
-                if original_text_channel:
-                    sink.text_channel = original_text_channel
+    # Clean up
+    os.unlink(file_path)
+    
+    # Resume recording with proper callback format
+    if was_recording:
+        # Recreate the sink with existing settings
+        if hasattr(voice_client, 'last_sink'):
+            sink = voice_client.last_sink
+            
+            # Make sure we preserve the original text channel reference
+            original_text_channel = getattr(voice_client, 'original_text_channel', None)
+            if original_text_channel:
+                sink.text_channel = original_text_channel
+        else:
+            # Create new sink if we don't have reference to the old one
+            user_queues = getattr(voice_client, 'user_queues', {})
+            sink = TranslationSink(user_queues)
+            
+            # Use the stored original channel reference
+            original_text_channel = getattr(voice_client, 'original_text_channel', None)
+            if original_text_channel:
+                sink.text_channel = original_text_channel
             else:
-                # Create new sink if we don't have reference to the old one
-                user_queues = getattr(voice_client, 'user_queues', {})
-                sink = TranslationSink(user_queues)
-                
-                # Use the stored original channel reference
-                original_text_channel = getattr(voice_client, 'original_text_channel', None)
-                if original_text_channel:
-                    sink.text_channel = original_text_channel
-                else:
-                    # Fallback to finding any text channel only if necessary
-                    text_channel = None
-                    for guild in voice_client.bot.guilds:
-                        for channel in guild.text_channels:
-                            if channel.permissions_for(guild.me).send_messages:
-                                text_channel = channel
-                                break
-                        if text_channel:
+                # Fallback to finding any text channel only if necessary
+                text_channel = None
+                for guild in voice_client.bot.guilds:
+                    for channel in guild.text_channels:
+                        if channel.permissions_for(guild.me).send_messages:
+                            text_channel = channel
                             break
-                    sink.text_channel = text_channel
-            
-            # Always set the voice_client reference
-            sink.voice_client = voice_client
-            
-            # Store reference to sink for future use
-            voice_client.last_sink = sink
-            
-            # Use a lambda with no parameters for the callback
-            voice_client.start_recording(sink, lambda: logger.info('Resumed recording'))
-            logger.info("Recording resumed after audio playback")
+                    if text_channel:
+                        break
+                sink.text_channel = text_channel
+        
+        # Always set the voice_client reference
+        sink.voice_client = voice_client
+        
+        # Store reference to sink for future use
+        voice_client.last_sink = sink
+        
+        # Use a lambda that accepts the parameter but ignores it (with underscore)
+        voice_client.start_recording(sink, lambda _: logger.info('Resumed recording'))
+        logger.info("Recording resumed after audio playback")
 
 async def monitor_speaking(voice_client, user_queues, text_channel, bot=None):
     """Monitor speaking events in voice channel"""

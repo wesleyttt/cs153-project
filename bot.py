@@ -17,6 +17,7 @@ class TranslatorBot(commands.Bot):
         
         # Default target language
         self.target_language = "Spanish"
+        self.input_language = "English"  # Default input language
         
         # Register commands
         self.add_commands()
@@ -56,7 +57,7 @@ class TranslatorBot(commands.Bot):
                     voice_client.last_sink = sink
                     
                     # Start recording with the correct callback format
-                    voice_client.start_recording(sink, lambda: logger.info('Recording ended'))
+                    voice_client.start_recording(sink, lambda _: logger.info('Recording ended'))
                     logger.info("Recording started")
                     
                     # Store user_queues in voice_client for reference elsewhere
@@ -93,14 +94,16 @@ class TranslatorBot(commands.Bot):
                 "Russian", "Japanese", "Chinese", "Korean", "Arabic",
                 "Hindi", "Dutch", "Swedish", "Greek", "Turkish"
             ]
-            await ctx.send("Common available languages:\n" + "\n".join(common_languages))
+            await ctx.send("Common available languages for both input and output:\n" + "\n".join(common_languages))
             await ctx.send("You can try other languages as well - Mistral supports many languages.")
+            await ctx.send("Use `!input [language]` to set input language and `!setlang [language]` to set output language.")
 
         @self.command()
         async def info(ctx):
             """Show information about the bot"""
             info_message = (
                 f"**Discord Voice Translator**\n"
+                f"- Input Language: {self.input_language}\n"
                 f"- Target Language: {self.target_language}\n"
                 f"- Speech Recognition: ElevenLabs\n"
                 f"- Translation: Mistral AI\n"
@@ -109,6 +112,7 @@ class TranslatorBot(commands.Bot):
                 f"- `!join` - Join your voice channel and start translating\n"
                 f"- `!leave` - Leave the voice channel\n"
                 f"- `!setlang [language]` - Set target language\n"
+                f"- `!input [language]` - Set input language\n"
                 f"- `!languages` - List available languages\n"
                 f"- `!info` - Show this information"
             )
@@ -119,6 +123,30 @@ class TranslatorBot(commands.Bot):
         async def ping(ctx):
             """Simple ping command to check if bot is responsive"""
             await ctx.send('Pong!')
+
+        @self.command(name="input")
+        async def input_command(ctx, language=None):
+            """Set the input language for speech recognition"""
+            if not language:
+                await ctx.send(f"Current input language: {self.input_language}\nUse !input [language] to change.")
+                return
+            
+            # Normalize language name
+            language = language.capitalize()
+            
+            # List of supported languages
+            supported_languages = [
+                "English", "Spanish", "French", "German", "Italian", 
+                "Portuguese", "Japanese", "Chinese", "Russian", "Korean",
+                "Dutch", "Hindi", "Arabic"
+            ]
+            
+            if language in supported_languages:
+                self.input_language = language
+                await ctx.send(f"Input language set to: {language}")
+            else:
+                languages_str = ", ".join(supported_languages)
+                await ctx.send(f"Unsupported language. Please choose from: {languages_str}")
 
     @commands.Cog.listener()
     async def on_ready(self):
