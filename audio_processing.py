@@ -55,9 +55,6 @@ def process_user_audio(user_id, audio_queue, text_channel, voice_client, target_
     silence_threshold = 0.3  # seconds of silence to consider end of speech
     last_audio_time = None
     
-    # Cache available voices
-    all_voices = get_elevenlabs_voices()
-    
     # Get user's input language preference
     source_lang = get_user_input_language(user_id, default="English")
     logger.info(f"Using input language for user {user_id}: {source_lang}")
