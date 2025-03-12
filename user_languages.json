@@ -1,10 +1,16 @@
 {
   "215147798323003393": {
-    "input": "English",
-    "output": "chinese"
+    "input": "Chinese",
+    "output": "French",
+    "singleplayer": true
   },
   "393905491262046212": {
     "input": "spanish",
+    "output": "english",
+    "singleplayer": false
+  },
+  "632208926556815360": {
+    "input": "indonesian",
     "output": "english"
   }
 }

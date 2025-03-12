@@ -6,7 +6,7 @@ from api_services import (
     get_elevenlabs_voices, assign_voice_to_user,
     get_user_input_language, get_user_output_language,
     set_user_input_language, set_user_output_language,
-    load_voice_assignments
+    load_voice_assignments, get_user_singleplayer_mode, set_user_singleplayer_mode
 )
 
 # Setup logging
@@ -128,6 +128,7 @@ class TranslatorBot(commands.Bot):
                 f"- `!setvoice [number]` - Set your TTS voice\n"
                 f"- `!myconfig` - View your language settings\n"
                 f"- `!languages` - List available languages\n"
+                f"- `!singleplayer [on/off]` - Toggle language instructor mode\n"
                 f"- `!info` - Show this information"
             )
             
@@ -160,6 +161,7 @@ class TranslatorBot(commands.Bot):
             # Get language preferences
             input_lang = get_user_input_language(user_id, default="English")
             output_lang = get_user_output_language(user_id, default=self.target_language)
+            singleplayer_mode = get_user_singleplayer_mode(user_id, default=False)
             
             # Get voice information
             voice_name = "Default"
@@ -176,7 +178,7 @@ class TranslatorBot(commands.Bot):
                         voice_index = i + 1  # Convert to 1-based index for display
                         break
             
-            await ctx.send(f"Your settings:\n- Input language: {input_lang}\n- Output language: {output_lang}\n- Voice: {voice_name} (#{voice_index})")
+            await ctx.send(f"Your settings:\n- Input language: {input_lang}\n- Output language: {output_lang}\n- Voice: {voice_name} (#{voice_index})\n- Singleplayer mode: {'Enabled' if singleplayer_mode else 'Disabled'}")
 
         @self.command()
         async def setvoice(ctx, voice_index=None):
@@ -225,6 +227,35 @@ class TranslatorBot(commands.Bot):
                 
             except ValueError:
                 await ctx.send("Please provide a valid number for the voice selection.")
+
+        @self.command()
+        async def singleplayer(ctx, option=None):
+            """Toggle singleplayer mode for language learning"""
+            user_id = ctx.author.id
+            
+            # If no option provided, toggle the current state
+            if option is None:
+                current_state = get_user_singleplayer_mode(user_id, default=False)
+                new_state = not current_state
+                set_user_singleplayer_mode(user_id, new_state)
+                
+                if new_state:
+                    await ctx.send(f"🎮 Singleplayer mode **enabled**! I'll now act as your language instructor for {get_user_output_language(user_id)}.\n"
+                                  f"Ask me things like 'How do I say hello in {get_user_output_language(user_id)}?' or questions about grammar and vocabulary.")
+                else:
+                    await ctx.send("🎮 Singleplayer mode **disabled**. Back to regular translation mode.")
+                return
+            
+            # Handle explicit on/off options
+            if option.lower() in ["on", "true", "enable", "yes", "1"]:
+                set_user_singleplayer_mode(user_id, True)
+                await ctx.send(f"🎮 Singleplayer mode **enabled**! I'll now act as your language instructor for {get_user_output_language(user_id)}.\n"
+                              f"Ask me things like 'How do I say hello in {get_user_output_language(user_id)}?' or questions about grammar and vocabulary.")
+            elif option.lower() in ["off", "false", "disable", "no", "0"]:
+                set_user_singleplayer_mode(user_id, False)
+                await ctx.send("🎮 Singleplayer mode **disabled**. Back to regular translation mode.")
+            else:
+                await ctx.send("❌ Invalid option. Use `!singleplayer` to toggle, or `!singleplayer on`/`!singleplayer off` to set explicitly.")
 
     @commands.Cog.listener()
     async def on_ready(self):

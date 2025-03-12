@@ -54,6 +54,7 @@ MISTRAL_API_KEY=your_mistral_key
 - `!setvoice [voice_id]` - Set your voice (voice_id is an int between 1 and 20)
 - `!myconfig` - View your current language settings
 - `!languages` - List available languages
+- `!singleplayer [on/off]` - Toggle language instructor mode for learning practice
 - `!info` - Show bot information
 - `!ping` - Test if the bot is responsive
 
