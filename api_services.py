@@ -23,7 +23,7 @@ def transcribe_audio(audio_data):
         
     logger.info(f"Processing audio data of size: {len(audio_data)} bytes")
     
-    # Convert audio data to proper format
+    # Optimize format conversion - use settings that match ElevenLabs' expectations directly
     try:
         audio = AudioSegment.from_raw(
             io.BytesIO(audio_data),
@@ -32,11 +32,15 @@ def transcribe_audio(audio_data):
             channels=2
         )
         
-        # Convert to mono and set appropriate sample rate
-        audio = audio.set_channels(1)
-        audio = audio.set_frame_rate(16000)
+        # Convert to mono and directly to 16kHz (ElevenLabs preferred format)
+        audio = audio.set_channels(1).set_frame_rate(16000)
         
-        logger.info(f"Converted audio: {len(audio.raw_data)} bytes, {audio.frame_rate}Hz, {audio.channels} channel(s)")
+        # Send directly as bytes rather than saving to disk first
+        audio_bytes = io.BytesIO()
+        audio.export(audio_bytes, format="mp3")
+        audio_bytes.seek(0)
+        
+        logger.info(f"Converted audio: {len(audio_bytes.getvalue())} bytes, {audio.frame_rate}Hz, {audio.channels} channel(s)")
     except Exception as e:
         logger.error(f"Error converting audio format: {e}")
         return ""
@@ -68,21 +72,12 @@ def transcribe_audio(audio_data):
             return ""
         
         # ElevenLabs requires multipart/form-data with 'file' field and 'model_id'
-        with open(temp_file_path, "rb") as audio_file:
-            files = {"file": audio_file}
-            data = {"model_id": "scribe_v1"}
-            
-            response = requests.post(
-                ELEVENLABS_STT_URL,
-                headers=headers,
-                files=files,
-                data=data
-            )
-        
-        # Clean up temp file
-        if os.path.exists(temp_file_path):
-            os.unlink(temp_file_path)
-            logger.info(f"Deleted temporary file: {temp_file_path}")
+        response = requests.post(
+            ELEVENLABS_STT_URL,
+            headers=headers,
+            files={"file": audio_bytes},
+            data={"model_id": "scribe_v1"}
+        )
         
         if response.status_code == 200:
             result = response.json().get("text", "")
@@ -109,8 +104,6 @@ def transcribe_audio(audio_data):
             
     except Exception as e:
         logger.error(f"Error in transcription: {e}")
-        if temp_file_path and os.path.exists(temp_file_path):
-            os.unlink(temp_file_path)
         return ""
 
 def translate_text(text, source_lang="English", target_lang="Spanish"):
@@ -131,8 +124,8 @@ def translate_text(text, source_lang="English", target_lang="Spanish"):
                 "content": f"""You are a translator. Translate the following text from {source_lang} to {target_lang}. Only respond with the translated text, nothing else. If the input is a question, do not respond to the question, only respond with the translated question.
 
                 Example: source_lang = English, target_lang = Spanish
-                Input: What is the capital of France?
-                Output: ¿Cuál es la capital de Francia?
+                Input: Can I speak Spanish with you?
+                Output: ¿Puedo hablar español contigo?
 
                 Example: source_lang = Chinese, target_lang = English  
                 Input: 你現在在講什麼語言？
@@ -141,6 +134,10 @@ def translate_text(text, source_lang="English", target_lang="Spanish"):
                 Example: source_lang = Spanish, target_lang = French
                 Input: El clima es agradable hoy.
                 Output: Il fait beau aujourd'hui.
+
+                Example: source_lang = English, target_lang = French
+                Input: What did I eat today?
+                Output: Qu'ai-je mangé aujourd'hui?
 
                 ----
                 Current translation:
